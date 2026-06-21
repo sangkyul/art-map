@@ -266,6 +266,10 @@ const ROW_DEFS = [
 ROW_DEFS[8].match = p => !ROW_DEFS.slice(0, 8).some(r => r.match(p));
 
 function geoOf(p) { return ROW_DEFS.find(r => r.match(p)); }
+function locOf(p) {
+  const v = locOf(p);
+  return (v.startsWith('http') || v.startsWith('Q')) ? '' : v;
+}
 
 // ── Leaflet map ────────────────────────────────────────────────────────────────
 const map = L.map('map', { center: [48, 10], zoom: 4, zoomControl: true });
@@ -279,19 +283,22 @@ let markerLayer = null;
 
 function thumbUrl(imageUrl, width) {
   if (!imageUrl) return null;
-  // For en.wikipedia Special:FilePath (fair-use images like Persistence of Memory)
-  // keep the ?width= approach as thumb.php is Commons-only
+  // For en.wikipedia Special:FilePath (fair-use images — thumb.php is Commons-only)
   if (imageUrl.includes('en.wikipedia.org')) {
     const base = imageUrl.replace(/^http:/, 'https:');
     return base.includes('?') ? `${base}&width=${width}` : `${base}?width=${width}`;
   }
-  // For Wikimedia Commons: use thumb.php directly (no redirect chain, more reliable on mobile)
+  // For Wikimedia Commons: use thumb.php with properly decoded filename
+  // Exception: thumb.php returns 400 for TIFF files — fall back to Special:FilePath for those
   const m = imageUrl.match(/Special:FilePath\/(.+)$/);
   if (m) {
-    const filename = m[1].split('?')[0]; // strip any existing query params
-    return `https://commons.wikimedia.org/w/thumb.php?width=${width}&f=${filename}`;
+    const raw = m[1].split('?')[0];
+    if (/\.tiff?$/i.test(raw)) {
+      return `https://commons.wikimedia.org/wiki/Special:FilePath/${raw}?width=${width}`;
+    }
+    const filename = decodeURIComponent(raw).replace(/ /g, '_');
+    return `https://commons.wikimedia.org/w/thumb.php?width=${width}&f=${encodeURIComponent(filename)}`;
   }
-  // Fallback: original ?width= approach
   const base = imageUrl.replace(/^http:/, 'https:');
   return base.includes('?') ? `${base}&width=${width}` : `${base}?width=${width}`;
 }
@@ -329,7 +336,7 @@ function galleryCard(p) {
 function showClusterPopup(latlng, paintings) {
   const groups = {};
   paintings.forEach(p => {
-    const key = p.collection || p.location_label || 'Unknown location';
+    const key = locOf(p) || 'Unknown location';
     (groups[key] = groups[key] || []).push(p);
   });
   const sorted = Object.entries(groups).sort((a, b) =>
@@ -391,7 +398,7 @@ function buildMarker(p) {
   marker._paintingData = p;
   const imgHtml  = p.image    ? `<img class="popup-img" src="${thumbUrl(p.image, 280)}" alt="${p.label}">` : '';
   const wikiLink = p.en_article ? `<a class="popup-link" href="https://en.wikipedia.org/wiki/${encodeURIComponent(p.en_article)}" target="_blank">Wikipedia →</a>` : '';
-  const loc = p.collection || p.location_label || '';
+  const loc = locOf(p);
   marker.bindPopup(`<div>${imgHtml}<div class="popup-inner">
     <div class="popup-title">${p.label}</div>
     <div class="popup-meta">${p.creator || ''}</div>
@@ -568,7 +575,7 @@ function buildPeriodTab() {
       const card = document.createElement(href ? 'a' : 'div');
       card.className = 'period-card';
       if (href) { card.href = href; card.target = '_blank'; }
-      const loc = p.collection || p.location_label || '';
+      const loc = locOf(p);
       card.innerHTML =
         (imgUrl ? `<img class="period-card-img" src="${imgUrl}" alt="" loading="lazy">` : `<div class="period-card-ph"></div>`) +
         `<div class="period-card-body">
@@ -784,7 +791,7 @@ function buildTimelineTab() {
       card.className = 'period-card tl-card';
       card.style.cssText = `left:${cardLeft}px; top:${cardTop}px; width:${W_CARD}px; z-index:2;`;
       if (href) { card.href = href; card.target = '_blank'; }
-      const loc = p.collection || p.location_label || '';
+      const loc = locOf(p);
       const rd  = geoOf(p);
       card.innerHTML =
         (imgUrl
@@ -856,7 +863,7 @@ function selectPainting(p) {
   // Open popup to the right of the pin
   const imgHtml  = p.image ? `<img class="popup-img" src="${thumbUrl(p.image, 400)}" alt="${p.label}">` : '';
   const wikiLink = p.en_article ? `<a class="popup-link" href="https://en.wikipedia.org/wiki/${encodeURIComponent(p.en_article)}" target="_blank">Wikipedia →</a>` : '';
-  const loc = p.collection || p.location_label || '';
+  const loc = locOf(p);
 
   searchPopup = L.popup({ maxWidth: 360, autoClose: false, closeOnClick: false, autoPan: false, className: 'search-popup', offset: L.point(165, 100) })
     .setLatLng([p.lat, p.lon])
