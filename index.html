@@ -279,6 +279,19 @@ let markerLayer = null;
 
 function thumbUrl(imageUrl, width) {
   if (!imageUrl) return null;
+  // For en.wikipedia Special:FilePath (fair-use images like Persistence of Memory)
+  // keep the ?width= approach as thumb.php is Commons-only
+  if (imageUrl.includes('en.wikipedia.org')) {
+    const base = imageUrl.replace(/^http:/, 'https:');
+    return base.includes('?') ? `${base}&width=${width}` : `${base}?width=${width}`;
+  }
+  // For Wikimedia Commons: use thumb.php directly (no redirect chain, more reliable on mobile)
+  const m = imageUrl.match(/Special:FilePath\/(.+)$/);
+  if (m) {
+    const filename = m[1].split('?')[0]; // strip any existing query params
+    return `https://commons.wikimedia.org/w/thumb.php?width=${width}&f=${filename}`;
+  }
+  // Fallback: original ?width= approach
   const base = imageUrl.replace(/^http:/, 'https:');
   return base.includes('?') ? `${base}&width=${width}` : `${base}?width=${width}`;
 }
@@ -578,20 +591,25 @@ function buildTimelineTab() {
   tlBuilt = true;
 
   const BIN_SIZE = 10, BIN_START = 1500;
-  const withYear = PAINTINGS.filter(p => p.year != null && p.year >= BIN_START);
-  const maxYear  = withYear.reduce((a, p) => Math.max(a, p.year), BIN_START + BIN_SIZE);
-  const numBins  = Math.ceil((maxYear + 1 - BIN_START) / BIN_SIZE);
+  const allYear   = PAINTINGS.filter(p => p.year != null);
+  const pre1500   = allYear.filter(p => p.year < BIN_START).sort((a, b) => b.score - a.score);
+  const withYear  = allYear.filter(p => p.year >= BIN_START);
+  const maxYear   = withYear.reduce((a, p) => Math.max(a, p.year), BIN_START + BIN_SIZE);
+  const numDecade = Math.ceil((maxYear + 1 - BIN_START) / BIN_SIZE);
+  // bin index 0 = pre-1500 (special); indices 1…numDecade+1 = decade bins
+  const numBins   = 1 + numDecade;
+  const GAP_PX    = 14; // extra horizontal gap between pre-1500 col and first decade col
 
-  // Bin arrays sorted by score descending
-  const bins = Array.from({ length: numBins }, (_, i) => {
+  // Bin arrays sorted by score descending; index 0 is pre-1500
+  const bins = [pre1500, ...Array.from({ length: numDecade }, (_, i) => {
     const y0 = BIN_START + i * BIN_SIZE;
     return withYear
       .filter(p => p.year >= y0 && p.year < y0 + BIN_SIZE)
       .sort((a, b) => b.score - a.score);
-  });
+  })];
 
-  // Top 10 paintings in the 1500+ range
-  const top10 = withYear.slice().sort((a, b) => b.score - a.score).slice(0, 10);
+  // Top 10 paintings across all years
+  const top10 = allYear.slice().sort((a, b) => b.score - a.score).slice(0, 10);
 
   const canvas  = document.getElementById('tl-canvas');
   const scroll  = document.getElementById('tl-scroll');
@@ -612,9 +630,20 @@ function buildTimelineTab() {
   const LEAD_H  = 28;   // vertical gap: axis bottom to first card row
   const ROW_GAP = 10;   // gap between card rows
 
+  // cx of bin i accounting for extra gap after bin 0
+  function binCx(i, padL, binPx) {
+    if (i === 0) return padL + binPx * 0.5;
+    return padL + binPx * 0.5 + GAP_PX + i * binPx;
+  }
+
   // Assign each top-10 card to a row (greedy left-to-right, no horizontal overlap)
   const cardItems = top10.map(p => {
-    const binIdx = Math.min(numBins - 1, Math.max(0, Math.floor((p.year - BIN_START) / BIN_SIZE)));
+    let binIdx;
+    if (p.year < BIN_START) {
+      binIdx = 0;
+    } else {
+      binIdx = 1 + Math.min(numDecade - 1, Math.max(0, Math.floor((p.year - BIN_START) / BIN_SIZE)));
+    }
     return { p, binIdx };
   }).sort((a, b) => a.binIdx - b.binIdx);
 
@@ -639,7 +668,7 @@ function buildTimelineTab() {
   const TOTAL_H = CHART_H + LEAD_H + (maxRow + 1) * (H_CARD + ROW_GAP) + 16;
 
   function render(viewW) {
-    const canvasW = Math.max(viewW, PAD_L + numBins * BIN_PX + PAD_R);
+    const canvasW = Math.max(viewW, PAD_L + GAP_PX + numBins * BIN_PX + PAD_R);
 
     // Set spacer to define scroll area
     spacer.style.width  = canvasW + 'px';
@@ -658,21 +687,37 @@ function buildTimelineTab() {
     ctx.lineTo(canvasW - PAD_R, axisY);
     ctx.stroke();
 
-    // ── Tick marks and year labels (every other bin = every 20 years) ──
+    // ── Vertical separator between pre-1500 and decade bins ──
+    const sepX = PAD_L + BIN_PX + GAP_PX / 2;
+    ctx.strokeStyle = '#555'; ctx.lineWidth = 1;
+    ctx.setLineDash([3, 3]);
+    ctx.beginPath();
+    ctx.moveTo(sepX, PAD_T);
+    ctx.lineTo(sepX, axisY);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // ── Tick marks and labels ──
     ctx.font = '9px Georgia,serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
     for (let i = 0; i < numBins; i++) {
-      const cx = PAD_L + (i + 0.5) * BIN_PX;
+      const cx = binCx(i, PAD_L, BIN_PX);
       ctx.strokeStyle = '#333'; ctx.lineWidth = 1;
       ctx.beginPath(); ctx.moveTo(cx, axisY); ctx.lineTo(cx, axisY + 4); ctx.stroke();
-      if (i % 2 === 0) {
-        ctx.fillStyle = '#666';
-        ctx.fillText(String(BIN_START + i * BIN_SIZE), cx, axisY + 8);
+      ctx.fillStyle = '#666';
+      if (i === 0) {
+        ctx.fillText('< 1500', cx, axisY + 8);
+      } else {
+        // decade bins: label every other one (every 20 years)
+        const di = i - 1; // decade index
+        if (di % 2 === 0) {
+          ctx.fillText(String(BIN_START + di * BIN_SIZE), cx, axisY + 8);
+        }
       }
     }
 
     // ── Bubbles ──
     bins.forEach((cell, i) => {
-      const cx      = PAD_L + (i + 0.5) * BIN_PX;
+      const cx      = binCx(i, PAD_L, BIN_PX);
       let   bottomY = axisY - 1;
       for (const p of cell) {
         const r  = Math.max(MIN_R, (p.score / 100) * MAX_R);
@@ -694,9 +739,9 @@ function buildTimelineTab() {
     cardsEl.innerHTML = '';
 
     laid.forEach(({ p, binIdx, rowIdx }) => {
-      const binCx   = PAD_L + (binIdx + 0.5) * BIN_PX;
+      const bCx     = binCx(binIdx, PAD_L, BIN_PX);
       // Clamp card position so it stays within canvas bounds
-      const rawLeft = Math.round(binCx - W_CARD / 2);
+      const rawLeft = Math.round(bCx - W_CARD / 2);
       const cardLeft = Math.max(0, Math.min(canvasW - W_CARD, rawLeft));
       const cardCx   = cardLeft + W_CARD / 2;
       const cardTop  = CHART_H + LEAD_H + rowIdx * (H_CARD + ROW_GAP);
@@ -706,10 +751,10 @@ function buildTimelineTab() {
       ctx.lineWidth = 1;
       ctx.setLineDash([3, 4]);
       ctx.beginPath();
-      ctx.moveTo(binCx, axisY + 5);
+      ctx.moveTo(bCx, axisY + 5);
       // Elbow: go down to midpoint then across to card center
       const midY = CHART_H + LEAD_H / 2;
-      ctx.lineTo(binCx, midY);
+      ctx.lineTo(bCx, midY);
       ctx.lineTo(cardCx, midY);
       ctx.lineTo(cardCx, cardTop - 2);
       ctx.stroke();
@@ -717,7 +762,7 @@ function buildTimelineTab() {
 
       // Dot on axis
       ctx.beginPath();
-      ctx.arc(binCx, axisY + 5, 3, 0, Math.PI * 2);
+      ctx.arc(bCx, axisY + 5, 3, 0, Math.PI * 2);
       ctx.fillStyle = '#666';
       ctx.fill();
 
