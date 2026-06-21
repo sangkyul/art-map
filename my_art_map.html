@@ -79,25 +79,6 @@ L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
   attribution:'&copy; OpenStreetMap &copy; CARTO', maxZoom:19
 }).addTo(map);
 
-// Cluster group
-function makeClusterGroup() {
-  return L.markerClusterGroup({
-    maxClusterRadius: 60,
-    iconCreateFunction(cluster) {
-      const n = cluster.getChildCount();
-      const sz = n > 1000 ? 58 : n > 300 ? 50 : n > 100 ? 42 : n > 30 ? 36 : 28;
-      const cls = n > 300 ? 'large' : n > 100 ? 'medium' : 'small';
-      return L.divIcon({
-        html: `<div class="art-cluster ${cls}" style="width:${sz}px;height:${sz}px">${n}</div>`,
-        className:'', iconSize:[sz,sz]
-      });
-    },
-    spiderfyOnMaxZoom: true,
-    showCoverageOnHover: false,
-    zoomToBoundsOnClick: true,
-  });
-}
-
 // Group works by lat/lon key → venue
 const venues = {};
 WORKS.forEach(w => {
@@ -106,42 +87,91 @@ WORKS.forEach(w => {
   venues[key].works.push(w);
 });
 
-// Build gallery popup for a venue
-function galleryPopup(venue) {
-  // Group by seen_at + exhibition
+function workCard(w) {
+  const dateFmt = w.date_seen ? new Date(w.date_seen).toLocaleDateString('en-GB', {day:'numeric',month:'short',year:'numeric'}) : '';
+  return `<div class="gallery-card">
+    <div class="gallery-card-title">${w.title}</div>
+    <div class="gallery-card-artist">${w.artist}</div>
+    <div class="gallery-card-meta">
+      ${w.year ? `<span class="year-chip">${w.year}</span>` : ''}
+      ${dateFmt ? `<span class="seen-chip">Seen ${dateFmt}</span>` : ''}
+    </div>
+  </div>`;
+}
+
+// Build gallery popup HTML for a given set of works grouped by (seen_at + exhibition)
+function venuePopupHtml(venue) {
   const groups = {};
   venue.works.forEach(w => {
     const key = [w.seen_at, w.exhibition].filter(Boolean).join(' — ') || 'Unknown';
     if (!groups[key]) groups[key] = [];
     groups[key].push(w);
   });
-
   const header = `<div class="gallery-header">${venue.location || 'Unknown venue'} &nbsp;<span style="color:#666;font-size:0.68rem">${venue.works.length} work${venue.works.length !== 1 ? 's' : ''}</span></div>`;
   let body = '<div class="gallery-list">';
   Object.entries(groups).forEach(([label, works]) => {
     body += `<div class="gallery-group-header"><span>${label}</span><span class="gallery-group-count">${works.length}</span></div>`;
-    works.forEach(w => {
-      const dateFmt = w.date_seen ? new Date(w.date_seen).toLocaleDateString('en-GB', {day:'numeric',month:'short',year:'numeric'}) : '';
-      body += `<div class="gallery-card">
-        <div class="gallery-card-title">${w.title}</div>
-        <div class="gallery-card-artist">${w.artist}</div>
-        <div class="gallery-card-meta">
-          ${w.year ? `<span class="year-chip">${w.year}</span>` : ''}
-          ${dateFmt ? `<span class="seen-chip">Seen ${dateFmt}</span>` : ''}
-        </div>
-      </div>`;
-    });
+    works.forEach(w => { body += workCard(w); });
   });
   body += '</div>';
   return `<div>${header}${body}</div>`;
 }
 
-const clusterLayer = makeClusterGroup();
+// Show popup for a cluster: group child markers by venue, sorted by work count desc
+function showClusterPopup(latlng, markers) {
+  const venueMap = {};
+  markers.forEach(m => {
+    const key = `${m._venueKey}`;
+    if (!venueMap[key]) venueMap[key] = { venue: m._venue, works: [] };
+    venueMap[key].works.push(m._work);
+  });
+  const entries = Object.values(venueMap).sort((a, b) => b.works.length - a.works.length);
+  const totalWorks = markers.length;
+  const venueCount = entries.length;
+  const headerText = venueCount === 1
+    ? `${entries[0].venue.location || 'Unknown venue'} — ${totalWorks} work${totalWorks !== 1 ? 's' : ''}`
+    : `${venueCount} venues — ${totalWorks} works`;
 
-// One marker per work so cluster counts = work counts
-// All works at same venue share the same popup
+  let body = '<div class="gallery-list">';
+  entries.forEach((entry) => { const venue = entry.venue, works = entry.works;
+    if (venueCount > 1) {
+      body += `<div class="gallery-group-header"><span>${venue.location || 'Unknown venue'}</span><span class="gallery-group-count">${works.length}</span></div>`;
+    }
+    works.forEach(w => { body += workCard(w); });
+  });
+  body += '</div>';
+
+  L.popup({ className:'gallery-popup', maxWidth:340 })
+    .setLatLng(latlng)
+    .setContent(`<div><div class="gallery-header">${headerText}</div>${body}</div>`)
+    .openOn(map);
+}
+
+// Cluster group
+const clusterLayer = L.markerClusterGroup({
+  maxClusterRadius: 60,
+  spiderfyOnMaxZoom: false,
+  showCoverageOnHover: false,
+  zoomToBoundsOnClick: false,
+  iconCreateFunction(cluster) {
+    const n = cluster.getChildCount();
+    const sz = n > 1000 ? 58 : n > 300 ? 50 : n > 100 ? 42 : n > 30 ? 36 : 28;
+    const cls = n > 300 ? 'large' : n > 100 ? 'medium' : 'small';
+    return L.divIcon({
+      html: `<div class="art-cluster ${cls}" style="width:${sz}px;height:${sz}px">${n}</div>`,
+      className:'', iconSize:[sz,sz]
+    });
+  },
+});
+
+clusterLayer.on('clusterclick', function(e) {
+  showClusterPopup(e.layer.getLatLng(), e.layer.getAllChildMarkers());
+});
+
+// One marker per work; store work + venue on marker for cluster popup
 Object.values(venues).forEach(venue => {
-  const popupContent = galleryPopup(venue);
+  const venueKey = `${venue.lat.toFixed(4)},${venue.lon.toFixed(4)}`;
+  const singleVenueHtml = venuePopupHtml(venue);
   venue.works.forEach(w => {
     const sz = 10;
     const marker = L.marker([venue.lat, venue.lon], {
@@ -150,7 +180,10 @@ Object.values(venues).forEach(venue => {
         className:'', iconSize:[sz,sz], iconAnchor:[sz/2,sz/2]
       })
     });
-    marker.bindPopup(popupContent, { maxWidth:340, className:'gallery-popup' });
+    marker._work = w;
+    marker._venue = venue;
+    marker._venueKey = venueKey;
+    marker.bindPopup(singleVenueHtml, { maxWidth:340, className:'gallery-popup' });
     clusterLayer.addLayer(marker);
   });
 });
