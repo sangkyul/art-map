@@ -153,6 +153,43 @@
   #tl-canvas { position: absolute; top: 0; left: 0; display: block; pointer-events: none; }
   #tl-cards  { position: absolute; top: 0; left: 0; }
   .tl-card   { position: absolute; }
+
+  /* ── Mobile ───────────────────────────────────────────────────────────────── */
+  @media (max-width: 600px) {
+    /* Header: stack title above search */
+    #header { flex-direction: column; align-items: flex-start; gap: 8px; padding: 10px 14px; }
+    #header h1 { font-size: 0.95rem; }
+    #header p  { font-size: 0.68rem; }
+    #search-wrap { margin-left: 0; width: 100%; }
+    #search-input { width: 100%; font-size: 0.78rem; }
+    #search-drop { width: 100%; right: auto; left: 0; }
+
+    /* Tabs */
+    #tabs { padding: 0 10px; }
+    .tab-btn { padding: 8px 12px; font-size: 0.78rem; }
+
+    /* Period filter bar: allow horizontal scroll instead of wrapping */
+    #century-bar { overflow-x: auto; flex-wrap: nowrap; gap: 5px; padding: 6px 10px; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+    #century-bar::-webkit-scrollbar { display: none; }
+    .century-btn { padding: 4px 10px; font-size: 0.72rem; white-space: nowrap; }
+    #century-bar > span { display: none; }
+
+    /* By Period: narrower columns */
+    #period-scroll { padding: 10px 10px 6px; }
+    #period-grid { gap: 10px; }
+    .period-col { width: 150px; }
+    .period-card-img, .period-card-ph { height: 65px; }
+
+    /* Geo legend: smaller */
+    .geo-legend { gap: 5px 10px; padding: 6px 10px; }
+    .geo-leg-item { font-size: 0.6rem; }
+    .geo-leg-flag { width: 14px; height: 14px; }
+    .geo-leg-dot  { width: 8px; height: 8px; }
+
+    /* Search popup: constrain width on narrow screens */
+    .search-popup .leaflet-popup-content { width: 260px !important; }
+    .search-popup .popup-img { max-height: 240px; }
+  }
 </style>
 </head>
 <body>

@@ -1,6 +1,6 @@
-"""Rebuild map.html keeping the PAINTINGS data intact."""
+"""Rebuild index.html keeping the PAINTINGS data intact."""
 
-content = open('map.html', encoding='utf-8').read()
+content = open('index.html', encoding='utf-8').read()
 idx = content.find('\nconst PAINTINGS = [')
 nl  = content.find('\n', idx + 1)
 paintings_line = content[idx : nl + 1]
@@ -162,6 +162,43 @@ PRE = r"""<!DOCTYPE html>
   #tl-canvas { position: absolute; top: 0; left: 0; display: block; pointer-events: none; }
   #tl-cards  { position: absolute; top: 0; left: 0; }
   .tl-card   { position: absolute; }
+
+  /* ── Mobile ───────────────────────────────────────────────────────────────── */
+  @media (max-width: 600px) {
+    /* Header: stack title above search */
+    #header { flex-direction: column; align-items: flex-start; gap: 8px; padding: 10px 14px; }
+    #header h1 { font-size: 0.95rem; }
+    #header p  { font-size: 0.68rem; }
+    #search-wrap { margin-left: 0; width: 100%; }
+    #search-input { width: 100%; font-size: 0.78rem; }
+    #search-drop { width: 100%; right: auto; left: 0; }
+
+    /* Tabs */
+    #tabs { padding: 0 10px; }
+    .tab-btn { padding: 8px 12px; font-size: 0.78rem; }
+
+    /* Period filter bar: allow horizontal scroll instead of wrapping */
+    #century-bar { overflow-x: auto; flex-wrap: nowrap; gap: 5px; padding: 6px 10px; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+    #century-bar::-webkit-scrollbar { display: none; }
+    .century-btn { padding: 4px 10px; font-size: 0.72rem; white-space: nowrap; }
+    #century-bar > span { display: none; }
+
+    /* By Period: narrower columns */
+    #period-scroll { padding: 10px 10px 6px; }
+    #period-grid { gap: 10px; }
+    .period-col { width: 150px; }
+    .period-card-img, .period-card-ph { height: 65px; }
+
+    /* Geo legend: smaller */
+    .geo-legend { gap: 5px 10px; padding: 6px 10px; }
+    .geo-leg-item { font-size: 0.6rem; }
+    .geo-leg-flag { width: 14px; height: 14px; }
+    .geo-leg-dot  { width: 8px; height: 8px; }
+
+    /* Search popup: constrain width on narrow screens */
+    .search-popup .leaflet-popup-content { width: 260px !important; }
+    .search-popup .popup-img { max-height: 240px; }
+  }
 </style>
 </head>
 <body>
@@ -881,6 +918,6 @@ function selectPainting(p) {
 
 # Assemble
 new_content = PRE + paintings_line + POST_JS + tail
-open('map.html', 'w', encoding='utf-8').write(new_content)
+open('index.html', 'w', encoding='utf-8').write(new_content)
 print(f'Done. New file size: {len(new_content):,} bytes')
 print(f'Lines: {new_content.count(chr(10))}')
