@@ -122,6 +122,8 @@ PRE = r"""<!DOCTYPE html>
 
   /* By Period */
   #period-scroll { flex: 1; overflow: auto; padding: 16px 20px 10px; }
+  #period-bars-row { display: flex; gap: 14px; min-width: max-content; }
+  #period-cards-row { display: flex; gap: 14px; min-width: max-content; margin-top: 14px; }
   #period-grid { display: flex; gap: 14px; min-width: max-content; }
   .period-col { width: 188px; flex-shrink: 0; display: flex; flex-direction: column; }
   .period-heading { font-size: 0.82rem; color: #c9a84c; text-align: center; padding-bottom: 7px; border-bottom: 1px solid #333; margin-bottom: 10px; letter-spacing: 0.04em; }
@@ -148,7 +150,9 @@ PRE = r"""<!DOCTYPE html>
   .search-popup .leaflet-popup-content-wrapper { border-left: 2px solid #c9a84c; }
 
   /* Shared geo legend */
-  .geo-legend { flex-shrink: 0; display: flex; flex-wrap: wrap; gap: 8px 16px; padding: 8px 20px; border-top: 1px solid #222; }
+  .geo-legend { flex-shrink: 0; display: flex; flex-wrap: wrap; gap: 8px 16px; padding: 8px 0; border-top: 1px solid #222; margin-top: 6px; }
+  /* Timeline: legend absolutely positioned inside scroll area */
+  #tl-legend { position: absolute; left: 0; right: 0; border-top: 1px solid #222; padding: 8px 20px; background: #1a1a1a; }
   .geo-leg-item { display: flex; align-items: center; gap: 5px; font-size: 0.62rem; color: #888; }
   .geo-leg-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
   .geo-leg-flag { width: 18px; height: 18px; border-radius: 50%; object-fit: cover; flex-shrink: 0; }
@@ -185,7 +189,7 @@ PRE = r"""<!DOCTYPE html>
 
     /* By Period: narrower columns */
     #period-scroll { padding: 10px 10px 6px; }
-    #period-grid { gap: 10px; }
+    #period-grid, #period-bars-row, #period-cards-row { gap: 10px; }
     .period-col { width: 150px; }
     .period-card-img, .period-card-ph { height: 65px; }
 
@@ -230,18 +234,19 @@ PRE = r"""<!DOCTYPE html>
 
 <div id="panel-period">
   <div id="period-scroll">
-    <div id="period-grid"></div>
+    <div id="period-bars-row"></div>
+    <div id="period-geo-legend" class="geo-legend"></div>
+    <div id="period-cards-row"></div>
   </div>
-  <div id="period-geo-legend" class="geo-legend"></div>
 </div>
 
 <div id="panel-timeline">
   <div id="tl-scroll">
     <div id="tl-spacer"></div>
     <canvas id="tl-canvas"></canvas>
+    <div id="tl-legend" class="geo-legend"></div>
     <div id="tl-cards"></div>
   </div>
-  <div id="tl-legend" class="geo-legend"></div>
 </div>
 
 <div id="bar-tooltip"></div>
@@ -530,7 +535,8 @@ function attachSegTooltip(seg, label, count, total) {
 function buildPeriodTab() {
   prBuilt = true;
   const withYear = PAINTINGS.filter(p => p.year != null);
-  const grid = document.getElementById('period-grid');
+  const barsRow  = document.getElementById('period-bars-row');
+  const cardsRow = document.getElementById('period-cards-row');
 
   const allCells = CENTURY_BINS.map(cb =>
     withYear.filter(p => cb.fn(p.year)).sort((a, b) => b.score - a.score)
@@ -549,17 +555,16 @@ function buildPeriodTab() {
       count: cell.filter(p => rd.match(p)).length,
     })).filter(s => s.count > 0);
 
-    const col = document.createElement('div');
-    col.className = 'period-col';
-    col.innerHTML = `<div class="period-heading">${cb.label}</div>`;
+    // Bar column (heading + bar chart + count)
+    const barCol = document.createElement('div');
+    barCol.className = 'period-col';
+    barCol.innerHTML = `<div class="period-heading">${cb.label}</div>`;
 
     const barArea = document.createElement('div');
     barArea.className = 'period-bar-area';
-
     const bar = document.createElement('div');
     bar.className = 'period-bar';
     bar.style.height = barPx + 'px';
-
     segs.forEach(({ rd, count }) => {
       const seg = document.createElement('div');
       seg.className = 'period-bar-seg';
@@ -568,15 +573,18 @@ function buildPeriodTab() {
       attachSegTooltip(seg, rd.label, count, total);
       bar.appendChild(seg);
     });
-
     barArea.appendChild(bar);
-    col.appendChild(barArea);
+    barCol.appendChild(barArea);
 
     const countEl = document.createElement('div');
     countEl.className = 'period-count';
     countEl.textContent = `${total} painting${total !== 1 ? 's' : ''}`;
-    col.appendChild(countEl);
+    barCol.appendChild(countEl);
+    barsRow.appendChild(barCol);
 
+    // Cards column
+    const cardsCol = document.createElement('div');
+    cardsCol.className = 'period-col';
     const cardsWrap = document.createElement('div');
     cardsWrap.className = 'period-top5';
     top5.forEach(p => {
@@ -596,8 +604,8 @@ function buildPeriodTab() {
         </div>`;
       cardsWrap.appendChild(card);
     });
-    col.appendChild(cardsWrap);
-    grid.appendChild(col);
+    cardsCol.appendChild(cardsWrap);
+    cardsRow.appendChild(cardsCol);
   });
 
   buildGeoLegend(document.getElementById('period-geo-legend'));
@@ -642,10 +650,11 @@ function buildTimelineTab() {
   const CHART_H = axisY + AXIS_H;
   const MAX_R   = 9, MIN_R = 2;
 
-  const W_CARD  = 158;  // callout card width
-  const H_CARD  = 155;  // approximate card height (img 80 + body ~75)
-  const LEAD_H  = 28;   // vertical gap: axis bottom to first card row
-  const ROW_GAP = 10;   // gap between card rows
+  const W_CARD   = 158;  // callout card width
+  const H_CARD   = 155;  // approximate card height (img 80 + body ~75)
+  const LEGEND_H = 52;   // estimated geo legend height
+  const LEAD_H   = 10;   // vertical gap: legend bottom to first card row
+  const ROW_GAP  = 10;   // gap between card rows
 
   // cx of bin i accounting for extra gap after bin 0
   function binCx(i, padL, binPx) {
@@ -682,7 +691,13 @@ function buildTimelineTab() {
   });
 
   const maxRow  = laid.reduce((m, c) => Math.max(m, c.rowIdx), 0);
-  const TOTAL_H = CHART_H + LEAD_H + (maxRow + 1) * (H_CARD + ROW_GAP) + 16;
+  const CARDS_TOP = CHART_H + LEGEND_H + LEAD_H;
+  const TOTAL_H = CARDS_TOP + (maxRow + 1) * (H_CARD + ROW_GAP) + 16;
+
+  // Position the legend element right below the chart axis
+  const tlLegend = document.getElementById('tl-legend');
+  tlLegend.style.top = CHART_H + 'px';
+  buildGeoLegend(tlLegend);
 
   function render(viewW) {
     const canvasW = Math.max(viewW, PAD_L + GAP_PX + numBins * BIN_PX + PAD_R);
@@ -761,7 +776,7 @@ function buildTimelineTab() {
       const rawLeft = Math.round(bCx - W_CARD / 2);
       const cardLeft = Math.max(0, Math.min(canvasW - W_CARD, rawLeft));
       const cardCx   = cardLeft + W_CARD / 2;
-      const cardTop  = CHART_H + LEAD_H + rowIdx * (H_CARD + ROW_GAP);
+      const cardTop  = CARDS_TOP + rowIdx * (H_CARD + ROW_GAP);
 
       // Dashed leader line from axis to card top
       ctx.strokeStyle = '#555';
@@ -770,7 +785,7 @@ function buildTimelineTab() {
       ctx.beginPath();
       ctx.moveTo(bCx, axisY + 5);
       // Elbow: go down to midpoint then across to card center
-      const midY = CHART_H + LEAD_H / 2;
+      const midY = CARDS_TOP - LEAD_H / 2;
       ctx.lineTo(bCx, midY);
       ctx.lineTo(cardCx, midY);
       ctx.lineTo(cardCx, cardTop - 2);
@@ -833,7 +848,6 @@ function buildTimelineTab() {
   setTimeout(draw, 80);  // fallback if rAF fires before layout
   new ResizeObserver(draw).observe(scroll);
 
-  buildGeoLegend(document.getElementById('tl-legend'));
 }
 
 // ── Search ────────────────────────────────────────────────────────────────────
