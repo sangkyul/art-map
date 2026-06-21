@@ -277,7 +277,7 @@ ROW_DEFS[8].match = p => !ROW_DEFS.slice(0, 8).some(r => r.match(p));
 
 function geoOf(p) { return ROW_DEFS.find(r => r.match(p)); }
 function locOf(p) {
-  const v = locOf(p);
+  const v = p.collection || p.location_label || '';
   return (v.startsWith('http') || v.startsWith('Q')) ? '' : v;
 }
 
