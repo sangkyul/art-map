@@ -32,7 +32,9 @@ PRE = r"""<!DOCTYPE html>
   #panel-map      { flex: 1; display: none; flex-direction: column; overflow: hidden; }
   #panel-period   { flex: 1; display: none; flex-direction: column; overflow: hidden; }
   #panel-timeline { flex: 1; display: none; flex-direction: column; overflow: hidden; }
-  #panel-map.active, #panel-period.active, #panel-timeline.active { display: flex; }
+  #panel-myart    { flex: 1; display: none; flex-direction: column; overflow: hidden; }
+  #panel-map.active, #panel-period.active, #panel-timeline.active, #panel-myart.active { display: flex; }
+  #myart-frame { flex: 1; border: none; width: 100%; height: 100%; }
 
   /* Header */
   #header { padding: 12px 20px; background: #111; border-bottom: 1px solid #333; display: flex; align-items: center; flex-shrink: 0; gap: 20px; }
@@ -223,6 +225,7 @@ PRE = r"""<!DOCTYPE html>
   <button class="tab-btn active" data-tab="map">Map</button>
   <button class="tab-btn" data-tab="period">By Period</button>
   <button class="tab-btn" data-tab="timeline">Timeline</button>
+  <button class="tab-btn" data-tab="myart">My Art</button>
 </div>
 
 <div id="panel-map" class="active">
@@ -247,6 +250,10 @@ PRE = r"""<!DOCTYPE html>
     <div id="tl-legend" class="geo-legend"></div>
     <div id="tl-cards"></div>
   </div>
+</div>
+
+<div id="panel-myart">
+  <iframe id="myart-frame" src="my_art_map.html" title="My Art Map"></iframe>
 </div>
 
 <div id="bar-tooltip"></div>
@@ -493,6 +500,7 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     document.getElementById('panel-map').classList.toggle('active',      tab === 'map');
     document.getElementById('panel-period').classList.toggle('active',   tab === 'period');
     document.getElementById('panel-timeline').classList.toggle('active', tab === 'timeline');
+    document.getElementById('panel-myart').classList.toggle('active',    tab === 'myart');
     if (tab === 'period'   && !prBuilt) buildPeriodTab();
     if (tab === 'timeline' && !tlBuilt) buildTimelineTab();
     if (tab === 'map') map.invalidateSize();
