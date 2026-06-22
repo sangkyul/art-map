@@ -491,6 +491,7 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     document.getElementById('panel-period').classList.toggle('active',   tab === 'period');
     document.getElementById('panel-timeline').classList.toggle('active', tab === 'timeline');
     document.getElementById('panel-myart').classList.toggle('active',    tab === 'myart');
+    document.getElementById('search-wrap').style.display = tab === 'map' ? '' : 'none';
     if (tab === 'period'   && !prBuilt) buildPeriodTab();
     if (tab === 'timeline' && !tlBuilt) buildTimelineTab();
     if (tab === 'map') map.invalidateSize();

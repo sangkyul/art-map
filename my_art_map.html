@@ -57,6 +57,21 @@
   .gallery-card-seen   { font-size:0.65rem; color:#888; margin-top:3px; }
   .year-chip { display:inline-block; background:#2a2a2a; border:1px solid #444; color:#bbb; font-size:0.62rem; padding:1px 5px; border-radius:2px; margin-right:5px; }
   .seen-chip { display:inline-block; background:rgba(201,168,76,0.12); border:1px solid rgba(201,168,76,0.3); color:#c9a84c; font-size:0.62rem; padding:1px 6px; border-radius:2px; }
+
+  /* Search */
+  #search-wrap { position:relative; margin-left:auto; flex-shrink:0; }
+  #search-icon  { position:absolute; left:9px; top:50%; transform:translateY(-50%); color:#555; pointer-events:none; font-size:13px; }
+  #search-input { background:#1e1e1e; border:1px solid #333; color:#f0ead6; padding:6px 12px 6px 30px; font-size:0.74rem; font-family:'Georgia',serif; border-radius:3px; width:230px; outline:none; }
+  #search-input:focus { border-color:#c9a84c; }
+  #search-input::placeholder { color:#555; }
+  #search-drop  { position:absolute; top:calc(100% + 5px); right:0; background:#1e1e1e; border:1px solid #333; border-radius:3px; width:300px; max-height:340px; overflow-y:auto; z-index:10000; display:none; box-shadow:0 6px 20px rgba(0,0,0,0.6); scrollbar-width:thin; scrollbar-color:#444 #1e1e1e; }
+  #search-drop::-webkit-scrollbar { width:4px; }
+  #search-drop::-webkit-scrollbar-thumb { background:#444; border-radius:2px; }
+  .search-item { padding:8px 12px; cursor:pointer; border-bottom:1px solid #222; }
+  .search-item:hover, .search-item.si-active { background:#252525; }
+  .search-item-title { font-size:0.78rem; color:#f0ead6; }
+  .search-item-sub   { font-size:0.68rem; color:#888; margin-top:2px; }
+  .search-no-result  { padding:10px 12px; font-size:0.74rem; color:#666; }
 </style>
 </head>
 <body>
@@ -67,6 +82,11 @@
     <p>Paintings I have seen in person</p>
   </div>
   <div id="count-badge"></div>
+  <div id="search-wrap">
+    <span id="search-icon">&#9906;</span>
+    <input type="text" id="search-input" placeholder="Search title or artist…" autocomplete="off" spellcheck="false">
+    <div id="search-drop"></div>
+  </div>
 </div>
 <div id="map"></div>
 
@@ -192,6 +212,90 @@ map.addLayer(clusterLayer);
 
 // Update count badge
 document.getElementById('count-badge').textContent = `${WORKS.length.toLocaleString()} works across ${Object.keys(venues).length} venues`;
+
+// Search
+(function() {
+  const input = document.getElementById('search-input');
+  const drop  = document.getElementById('search-drop');
+  let results = [], activeIdx = -1;
+
+  function norm(s) { return (s || '').toLowerCase(); }
+
+  function highlight(text, q) {
+    const i = norm(text).indexOf(q);
+    if (i < 0) return text;
+    return text.slice(0, i) + '<mark style="background:rgba(201,168,76,0.35);color:inherit;border-radius:1px">' + text.slice(i, i + q.length) + '</mark>' + text.slice(i + q.length);
+  }
+
+  function renderDrop(q) {
+    activeIdx = -1;
+    if (!results.length) {
+      drop.innerHTML = '<div class="search-no-result">No results</div>';
+    } else {
+      drop.innerHTML = results.map((w, i) => {
+        const sub = [w.artist, w.year].filter(Boolean).join(' · ');
+        return `<div class="search-item" data-idx="${i}">
+          <div class="search-item-title">${highlight(w.title, q)}</div>
+          <div class="search-item-sub">${highlight(sub, q)}</div>
+        </div>`;
+      }).join('');
+      drop.querySelectorAll('.search-item').forEach(el => {
+        el.addEventListener('mousedown', e => {
+          e.preventDefault();
+          selectWork(results[+el.dataset.idx]);
+        });
+      });
+    }
+    drop.style.display = 'block';
+  }
+
+  function setActive(idx) {
+    const items = drop.querySelectorAll('.search-item');
+    items.forEach(el => el.classList.remove('si-active'));
+    activeIdx = Math.max(0, Math.min(idx, items.length - 1));
+    if (items[activeIdx]) {
+      items[activeIdx].classList.add('si-active');
+      items[activeIdx].scrollIntoView({ block:'nearest' });
+    }
+  }
+
+  function selectWork(w) {
+    input.value = '';
+    drop.style.display = 'none';
+    const key = `${w.lat.toFixed(4)},${w.lon.toFixed(4)}`;
+    const venue = venues[key];
+    if (!venue) return;
+    map.setView([venue.lat, venue.lon], 14);
+    L.popup({ className:'gallery-popup', maxWidth:340 })
+      .setLatLng([venue.lat, venue.lon])
+      .setContent(venuePopupHtml(venue))
+      .openOn(map);
+  }
+
+  input.addEventListener('input', () => {
+    const q = norm(input.value.trim());
+    if (q.length < 2) { drop.style.display = 'none'; return; }
+    results = WORKS
+      .filter(w => norm(w.title).includes(q) || norm(w.artist).includes(q))
+      .slice(0, 12);
+    renderDrop(q);
+  });
+
+  input.addEventListener('keydown', e => {
+    if (drop.style.display === 'none') return;
+    if (e.key === 'ArrowDown') { e.preventDefault(); setActive(activeIdx + 1); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); setActive(activeIdx - 1); }
+    else if (e.key === 'Enter') {
+      const pick = activeIdx >= 0 ? results[activeIdx] : results[0];
+      if (pick) selectWork(pick);
+    }
+    else if (e.key === 'Escape') { drop.style.display = 'none'; input.blur(); }
+  });
+
+  document.addEventListener('click', e => {
+    if (!e.target.closest('#search-wrap')) drop.style.display = 'none';
+  });
+})();
 </script>
 </body>
 </html>
